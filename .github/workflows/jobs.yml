@@ -1,25 +1,25 @@
 name: Job Bot
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
-  workflow_dispatch: # Run manually also
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - run: pip install -r requirements.txt
+      - run: pip install playwright requests
+      - run: playwright install chromium
       - run: python bot.py
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      - name: Save jobs.json
-        run: |
-          git config --global user.email "bot@bot.com"
-          git config --global user.name "Job Bot"
+      - run: |
+          git config user.name "Job Bot"
+          git config user.email "bot@bot.com"
           git add jobs.json || true
-          git commit -m "update jobs" || true
+          git commit -m "update" || true
           git push || true
