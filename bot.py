@@ -115,10 +115,12 @@ def scrape_with_browser():
         # 1. Hirist
         try:
             print("Scraping Hirist...")
-            page.goto("https://www.hirist.tech/jobs/?search=full+stack", timeout=30000)
-            page.wait_for_timeout(5000)
-            # Get all job cards
-            cards = page.query_selector_all("a[href*='/j/']")
+page.goto("https://www.hirist.tech/jobs/?search=full+stack+ai", timeout=30000)
+page.wait_for_timeout(8000)
+cards = page.query_selector_all("div.job-title, h3, [class*='jobTitle']")
+# try broader
+if len(cards) == 0:
+    cards = page.query_selector_all("a")
             print(f"Hirist found {len(cards)} links")
             for c in cards[:15]:
                 title = c.inner_text().strip()[:100]
