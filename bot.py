@@ -94,7 +94,8 @@
 #         print("No new jobs")
 
 
-import requests, json, os, time
+import json, os, time
+from playwright.sync_api import sync_playwright
 from telegram import send_telegram
 
 def load_seen():
@@ -105,73 +106,61 @@ def load_seen():
 def save_seen(s):
     with open("jobs.json","w") as f: json.dump(list(s),f)
 
-def scrape_hirist():
+def scrape_with_browser():
     jobs=[]
-    try:
-        url = "https://gladiator.hirist.tech/job/search"
-        # Real payload Hirist uses
-        payload = {
-            "query": "full stack ai",
-            "locations": [],
-            "experience": [],
-            "jobType": [],
-            "page": 1,
-            "limit": 20
-        }
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Content-Type": "application/json",
-            "Origin": "https://www.hirist.tech",
-            "Referer": "https://www.hirist.tech/"
-        }
-        r = requests.post(url, json=payload, headers=headers, timeout=20)
-        print("Hirist status:", r.status_code)
-        data = r.json()
-        print("Hirist raw keys:", data.keys())
-        for j in data.get("jobs", data.get("data", []))[:20]:
-            title = j.get("title","")
-            comp = j.get("companyName", j.get("company",""))
-            jid = j.get("id") or j.get("_id")
-            link = f"https://www.hirist.tech/j/{jid}" if jid else "https://www.hirist.tech"
-            jobs.append({"title":title, "company":comp, "link":link, "source":"Hirist"})
-    except Exception as e:
-        print("Hirist error:", e)
-    return jobs
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 
-def scrape_cutshort():
-    jobs=[]
-    try:
-        # Cutshort public search API
-        url = "https://cutshort.io/api/jobs/search"
-        params = {"keyword": "full stack ai", "page": 1}
-        r = requests.get(url, params=params, headers={"User-Agent":"Mozilla/5.0"}, timeout=20)
-        print("Cutshort status:", r.status_code)
-        data = r.json()
-        for j in data.get("jobs", [])[:20]:
-            jobs.append({"title":j.get("title",""), "company":j.get("company_name",""), "link":f"https://cutshort.io/job/{j.get('id','')}", "source":"Cutshort"})
-    except Exception as e:
-        print("Cutshort error:", e)
-        # Fallback mock to test notification flow
-        jobs.append({"title":"Full-Stack AI Engineer - TEST", "company":"TestCo", "link":"https://cutshort.io/job/test-123", "source":"Cutshort"})
+        # 1. Hirist
+        try:
+            print("Scraping Hirist...")
+            page.goto("https://www.hirist.tech/jobs/?search=full+stack", timeout=30000)
+            page.wait_for_timeout(5000)
+            # Get all job cards
+            cards = page.query_selector_all("a[href*='/j/']")
+            print(f"Hirist found {len(cards)} links")
+            for c in cards[:15]:
+                title = c.inner_text().strip()[:100]
+                link = c.get_attribute("href")
+                if link and "full" in title.lower() or "stack" in title.lower() or "ai" in title.lower() or len(title)>10:
+                    full_link = link if "http" in link else "https://www.hirist.tech"+link
+                    jobs.append({"title":title, "company":"Hirist", "link":full_link, "source":"Hirist"})
+        except Exception as e: print("Hirist playwright error", e)
+
+        # 2. Cutshort
+        try:
+            print("Scraping Cutshort...")
+            page.goto("https://cutshort.io/jobs?search=full-stack-ai", timeout=30000)
+            page.wait_for_timeout(5000)
+            cards = page.query_selector_all("a[href*='/job/']")
+            print(f"Cutshort found {len(cards)} links")
+            for c in cards[:15]:
+                title = c.inner_text().strip()[:100]
+                link = c.get_attribute("href")
+                if len(title)>10:
+                    full_link = link if "http" in link else "https://cutshort.io"+link
+                    jobs.append({"title":title, "company":"Cutshort", "link":full_link, "source":"Cutshort"})
+        except Exception as e: print("Cutshort playwright error", e)
+
+        browser.close()
     return jobs
 
 if __name__ == "__main__":
     seen=load_seen()
-    all_jobs = scrape_hirist() + scrape_cutshort()
-    print(f"Found {len(all_jobs)} jobs")
+    all_jobs = scrape_with_browser()
+    print(f"Total scraped: {len(all_jobs)}")
 
     new_jobs = [j for j in all_jobs if j["link"] not in seen]
+    print(f"New jobs: {len(new_jobs)}")
 
     if new_jobs:
         for job in new_jobs[:10]:
-            msg = f"🔥 *{job['title']}*\n🏢 {job['company']}\n🔗 {job['link']}\n📍 {job['source']}"
+            msg = f"🔥 {job['title']}\n🔗 {job['link']}\n📍 {job['source']}"
             send_telegram(msg)
             seen.add(job["link"])
             time.sleep(1)
     else:
-        if all_jobs:
-            send_telegram(f"Found {len(all_jobs)} jobs but all seen already. Bot working fine!")
-        else:
-            send_telegram("✅ Bot connected but API returned 0 — need to update API payload. Check Actions logs.")
+        send_telegram(f"Bot ran. Found {len(all_jobs)} total, {len(new_jobs)} new. If 0 total, site selectors need update — check logs.")
 
     save_seen(seen)
