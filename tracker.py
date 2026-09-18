@@ -1,42 +1,45 @@
-import requests, os, json, time
+import requests, json, os
 from datetime import datetime
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+SENT_FILE = "sent.json"
 
-KEYWORDS = ["Full Stack Developer", "Backend Engineer", "Software Engineer", "Software Developer", "Full Stack AI Developer", "Gen AI Developer"]
+def load_sent():
+    if os.path.exists(SENT_FILE):
+        try:
+            with open(SENT_FILE,'r') as f: return set(json.load(f))
+        except: return set()
+    return set()
 
-# Using Wellfound + Remotive free APIs (no auth needed)
-def check_jobs():
-    new_jobs = []
-    for kw in KEYWORDS:
-        # Wellfound public search (free)
-        url = f"https://wellfound.com/role/l/{kw.replace(' ', '-')}"
-        # Remotive API for remote AI jobs (free, shows post time)
-        r = requests.get(f"https://remotive.com/api/remote-jobs?search={kw}", timeout=15)
-        if r.status_code == 200:
-            for job in r.json().get('jobs', [])[:5]:
-                posted = job.get('publication_date','')
-                # Only jobs in last 3 hours
-                # Remotive date is ISO, we do simple filter
-                new_jobs.append(f"🚀 *{job['title']}* at {job['company_name']}\nPosted: {posted[:16]}\n{job['url']}")
+def save_sent(s): 
+    with open(SENT_FILE,'w') as f: json.dump(list(s), f)
 
-    # Dedupe using file
-    try:
-        with open("sent.json","r") as f: sent = json.load(f)
-    except: sent = []
-
-    for job in new_jobs:
-        if job not in sent:
-            send_telegram(job)
-            sent.append(job)
-    
-    with open("sent.json","w") as f: json.dump(sent[-100:], f)
-
-def send_telegram(msg):
+def send_tg(msg):
+    print(f"Sending to {CHAT_ID}...")
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"})
+    r = requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"})
+    print(f"Telegram Response: {r.status_code} - {r.text}") # THIS WILL SHOW ERROR
+    return r.ok
+
+def main():
+    sent = load_sent()
+    print(f"Loaded {len(sent)} sent")
+    new_count=0
+    try:
+        r = requests.get("https://remotive.com/api/remote-jobs?search=full%20stack", timeout=15).json()
+        for job in r.get('jobs', [])[:5]:
+            jid = str(job['id'])
+            if jid in sent: continue
+            msg = f"🚀 {job['title']} at {job['company_name']}\n{job['url']}"
+            ok = send_tg(msg)
+            if ok:
+                sent.add(jid)
+                new_count+=1
+    except Exception as e:
+        print(f"Error: {e}")
+    save_sent(sent)
+    print(f"Done. Checked at {datetime.now()} - Sent {new_count}")
 
 if __name__ == "__main__":
-    check_jobs()
-    print(f"Checked at {datetime.now()}")
+    main()
