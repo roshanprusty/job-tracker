@@ -1,8 +1,11 @@
 import json, os, re
 from playwright.sync_api import sync_playwright
 
-KEYWORDS = ["full-stack", "full stack", "ai engineer", "software engineer", "software developer", "backend engineer", "genai", "rag", "langchain", "langraph", "node.js", "fastapi", "django"]
-LOCATIONS = ["mumbai", "remote", "bangalore", "india", "noida", "gurugram", "hyderabad", "pune", "delhi"]
+# Title keywords (relaxed - what appears in TITLE)
+TITLE_KEYWORDS = ["backend", "full", "software", "sde", "developer", "engineer", "node", "python", "ai", "genai", "fastapi", "django"]
+
+# For logging only
+KEYWORDS = ["full-stack", "ai engineer", "software engineer", "backend engineer", "genai", "rag", "langchain", "node.js", "fastapi", "django"]
 MAX_EXP = 3
 
 def send_telegram(message):
@@ -12,7 +15,7 @@ def send_telegram(message):
     if not token or not chat_id: return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     data = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown", "disable_web_page_preview": True}
-    requests.post(url, data=data, timeout=10)
+    requests.post(url, data=data, timeout=15)
 
 def load_seen():
     try:
@@ -23,34 +26,14 @@ def save_seen(s):
     with open("jobs.json","w") as f: json.dump(list(s), f)
 
 def contains_keyword(text):
-    return any(k.lower() in text.lower() for k in KEYWORDS)
-
-def valid_location(text):
-    # if no location mentioned, allow it
-    t = text.lower()
-    if not any(x in t for x in ["mumbai","bangalore","delhi","remote","noida","pune","hyderabad","gurugram"]):
-        return True
-    return any(loc in t for loc in LOCATIONS)
+    return any(k.lower() in text.lower() for k in TITLE_KEYWORDS)
 
 def valid_experience(text):
     t = text.lower()
-    # REJECT senior 4+ years
-    if re.search(r'4\+?\s*year|5\+?\s*year|6\+?\s*year|3\s*-\s*5|4\s*-\s*6|senior|lead|manager', t):
+    # Only reject clear senior
+    if re.search(r'4\+?\s*year|5\+?\s*year|6\+|7\+|8\+|senior|lead|principal|manager|architect|staff engineer', t):
         return False
-    if "fresher" in t or "0 year" in t or "0-1" in t or "0-2" in t or "0 - 2" in t or "0-3" in t:
-        return True
-    matches = re.findall(r'(\d+)\s*-\s*(\d+)\s*year', t)
-    for _, max_y in matches:
-        if int(max_y) <= MAX_EXP + 1: # allow 0-3, 1-3 etc
-            return True
-    single = re.findall(r'(\d+)\+?\s*year', t)
-    for y in single:
-        if int(y) <= MAX_EXP:
-            return True
-    # If no year mentioned, ALLOW (most startup cards don't show exp)
-    if "year" not in t and "yoe" not in t and "yrs" not in t:
-        return True
-    return False
+    return True
 
 def scrape():
     jobs=[]
@@ -58,7 +41,7 @@ def scrape():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(user_agent="Mozilla/5.0")
 
-        # 1. CUTSHORT - URL already has 0-2 filter
+        # 1. CUTSHORT - KEEP ALL 0-2 YEARS (URL already filters)
         try:
             print("Scraping Cutshort 0-2 years...")
             page.goto("https://cutshort.io/jobs?search=backend%20developer&experience=0-2", timeout=30000)
@@ -71,34 +54,31 @@ def scrape():
                     title = c.inner_text().strip().replace("\n"," | ")[:200]
                     link = c.get_attribute("href")
                     if not link or "/job/" not in link: continue
-                    # Filter: keyword + exp
                     if not valid_experience(title): continue
-                    # Cutshort titles are short, so check keyword loosely
-                    if not contains_keyword(title) and "developer" not in title.lower() and "engineer" not in title.lower():
-                        continue
-                    full_link = link if "http" in link else "https://cutshort.io"+link
                     if len(title) < 5: continue
+                    # NO keyword filter for Cutshort - keep all 0-2
+                    full_link = link if "http" in link else "https://cutshort.io"+link
                     jobs.append({"title": title[:150], "link": full_link, "source": "Cutshort"})
                     count+=1
                 except: continue
             print(f"Cutshort KEPT: {count}")
         except Exception as e: print("Cutshort err", e)
 
-        # 2. HIRIST
+        # 2. HIRIST - FIXED
         try:
             print("Scraping Hirist...")
-            page.goto("https://www.hirist.tech/j/Software-Engineer-Jobs-0-2-years-experience.html", timeout=30000)
+            page.goto("https://www.hirist.tech/jobs/?search=backend%20developer", timeout=30000)
             page.wait_for_timeout(8000)
-            cards = page.query_selector_all("a")
+            cards = page.query_selector_all("a[href*='/j/']")
+            print(f"Hirist raw cards: {len(cards)}")
             h_count=0
             for c in cards:
                 try:
                     title = c.inner_text().strip()
                     link = c.get_attribute("href") or ""
-                    if "/j/" not in link or not 15 < len(title) < 200: continue
+                    if not link or len(title) < 15 or len(title) > 200: continue
                     if not valid_experience(title): continue
                     if not contains_keyword(title): continue
-                    if not valid_location(title): continue
                     full_link = link if "http" in link else "https://www.hirist.tech"+link
                     if full_link not in [j["link"] for j in jobs]:
                         jobs.append({"title": title[:150], "link": full_link, "source": "Hirist"})
@@ -107,20 +87,20 @@ def scrape():
             print(f"Hirist KEPT: {h_count} | Total now: {len(jobs)}")
         except Exception as e: print("Hirist err", e)
 
-        # 3. WELLFOUND
+        # 3. WELLFOUND - KEEP ALL SOFTWARE
         try:
             print("Scraping Wellfound...")
             page.goto("https://wellfound.com/role/l/software-engineer", timeout=40000)
             page.wait_for_timeout(10000)
             cards = page.query_selector_all("a[href*='/jobs/']")
+            print(f"Wellfound raw: {len(cards)}")
             w_count=0
-            for c in cards[:50]:
+            for c in cards[:40]:
                 try:
                     title = c.inner_text().strip()
                     link = c.get_attribute("href") or ""
                     if "/jobs/" not in link or not 10 < len(title) < 200: continue
                     if not valid_experience(title): continue
-                    if not contains_keyword(title) and "engineer" not in title.lower(): continue
                     full_link = link if "http" in link else "https://wellfound.com"+link
                     if full_link not in [j["link"] for j in jobs]:
                         jobs.append({"title": title[:150], "link": full_link, "source": "Wellfound"})
@@ -143,15 +123,14 @@ if __name__ == "__main__":
     print(f"New: {len(new_jobs)}")
 
     if new_jobs:
-        # ONE MESSAGE ONLY
         msg = f"🔥 *{len(new_jobs)} New Jobs (0-{MAX_EXP} Yrs)*\n\n"
         for i, job in enumerate(new_jobs[:15], 1):
             clean = job['title'].replace("\n"," ").replace("|","-").replace("*","")[:80]
             msg += f"{i}. {clean}\n   📍 {job['source']} | [Apply]({job['link']})\n\n"
             seen.add(job["link"])
-        msg += f"_Filters: {', '.join(KEYWORDS[:4])}... | {len(all_jobs)} total_"
+        msg += f"_Auto-checked 3 platforms_"
         send_telegram(msg)
     else:
-        send_telegram(f"✅ Checked 3 platforms. Found {len(all_jobs)} jobs (0-{MAX_EXP} Yrs), no NEW. Next in 6 hrs.")
+        send_telegram(f"✅ Checked 3 platforms. Found {len(all_jobs)} jobs, 0 new. Next in 6h.")
 
     save_seen(seen)
