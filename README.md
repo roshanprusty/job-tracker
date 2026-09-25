@@ -1,45 +1,46 @@
-# 🤖 Job Tracker - Full-Stack AI Jobs Bot
+# 🤖 Job Bot - 0-2 Years | Full-Stack / AI Engineer
 
-Auto-tracks Full-Stack AI / GenAI Engineer jobs every 1 hour and sends instant alerts on Telegram.
+Telegram bot that scrapes 3 job platforms every 6 hours and sends you only NEW jobs matching your stack.
 
-**Live for:** Mumbai + Remote roles | **Cost:** ₹0 / Free forever
+### 📌 Platforms Covered
+| Platform | Why |
+|---|---|
+| **Cutshort.io** | Best for 0-2 years, startup jobs |
+| **Hirist.tech** | Tech-only (Backend, Full-Stack, AI) - updates hourly |
+| **Wellfound** (AngelList) | Remote + Startup jobs |
 
----
+### 🎯 My Filters
+- **Experience:** 0-2 Years / Fresher
+- **Keywords:** `full-stack`, `full stack`, `ai engineer`, `software engineer`, `software developer`, `backend engineer`, `genai`, `rag`, `langchain`, `langraph`, `node.js`, `fastapi`, `django`
+- **Locations:** `mumbai`, `remote`, `bangalore`, `india`, `noida`, `gurugram`, `hyderabad`, `pune`, `delhi`
 
-### 🚀 What it does
-- Checks Wellfound (AngelList) + Remotive every 60 mins
-- Filters for Full-Stack + AI/LLM roles
-- Sends Telegram message only for NEW jobs (no spam)
-- Runs 24/7 even when laptop is off (via GitHub Actions)
+### ⚙️ How it works
+1. GitHub Actions runs `bot.py` every 6 hours
+2. Scrapes 3 sites with Playwright
+3. Filters by KEYWORDS + 0-2 years experience
+4. Checks `jobs.json` to avoid duplicate links
+5. Sends NEW jobs to Telegram
+6. Saves seen jobs back to `jobs.json`
 
-### 🛠️ Stack
-- Python (`requests`)
-- GitHub Actions (free server)
-- Telegram Bot API
+### 🔧 Setup
+1. Fork this repo
+2. Add GitHub Secrets:
+   - `TELEGRAM_TOKEN` - from @BotFather
+   - `TELEGRAM_CHAT_ID` - from @userinfobot
+3. Enable Actions -> Run workflow
 
 ### 📂 Files
-- `tracker.py` - Main brain, fetches jobs
-- `.github/workflows/jobs.yml` - Alarm clock that runs every 1 hr
-- `sent.json` - Auto-created, remembers sent jobs
-- `README.md` - This file
+- `bot.py` - Main scraper (3 platforms)
+- `jobs.json` - Stores seen job links (auto-updated)
+- `.github/workflows/job-bot.yml` - Cron every 6 hrs
 
-### 🔧 Setup (Already Done)
-1. Created Telegram Bot via @BotFather -> Got `BOT_TOKEN`
-2. Got `CHAT_ID` via `getUpdates` API
-3. Added both as GitHub Secrets
-4. Pushed workflow to GitHub
+### 📊 Workflow
+- Bot jobs -> Auto Telegram
+- LinkedIn / Naukri -> You apply manually
+- No duplicate alerts (uses `jobs.json`)
 
-### ▶️ How to run manually
-Go to **Actions** tab -> **Job Tracker** -> **Run workflow**
-
-### 📈 Free Limit Usage
-- ~720 runs/month * 30 sec = ~360 mins/month
-- GitHub Free limit = 2000 mins/month
-- So 100% free forever
-
-### ➕ Want to add more keywords/sources?
-Edit `tracker.py` -> Add your search terms in `KEYWORDS` list.
+### 🚀 Manual Run
+Go to Actions tab -> Job Bot -> Run workflow
 
 ---
-
-Made by Roshan | Mumbai, India
+Built for 0-2 years Full-Stack / AI roles in Mumbai/Remote.
