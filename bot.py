@@ -3,7 +3,7 @@ from playwright.sync_api import sync_playwright
 
 KEYWORDS = ["full-stack", "full stack", "ai engineer", "software engineer", "software developer", "backend engineer", "genai", "rag", "langchain", "langraph", "node.js", "fastapi", "django"]
 LOCATIONS = ["mumbai", "remote", "bangalore", "india", "noida", "gurugram", "hyderabad", "pune", "delhi"]
-MAX_EXP = 2
+MAX_EXP = 10
 
 def send_telegram(message):
     import requests
