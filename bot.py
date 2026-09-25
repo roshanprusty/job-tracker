@@ -3,7 +3,7 @@ from playwright.sync_api import sync_playwright
 
 KEYWORDS = ["full-stack", "full stack", "ai engineer", "software engineer", "software developer", "backend engineer", "genai", "rag", "langchain", "langraph", "node.js", "fastapi", "django"]
 LOCATIONS = ["mumbai", "remote", "bangalore", "india", "noida", "gurugram", "hyderabad", "pune", "delhi"]
-MAX_EXP = 10
+MAX_EXP = 2
 
 def send_telegram(message):
     import requests
@@ -52,62 +52,70 @@ def scrape():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(user_agent="Mozilla/5.0")
 
-        # 1. CUTSHORT - best for 0-2 years
+        # 1. CUTSHORT - DON'T filter strictly here
         try:
             print("Scraping Cutshort 0-2 years...")
-            page.goto(f"https://cutshort.io/jobs?search=full-stack&experience=0-2", timeout=30000)
-            page.wait_for_timeout(6000)
+            page.goto(f"https://cutshort.io/jobs?search=backend%20developer&experience=0-2", timeout=30000)
+            page.wait_for_timeout(7000)
             cards = page.query_selector_all("a[href*='/job/']")
             print(f"Cutshort raw cards: {len(cards)}")
+            count=0
             for c in cards[:30]:
                 try:
-                    full_text = c.inner_text()
-                    title = full_text.split("\n")[0][:120]
+                    title = c.inner_text().strip().replace("\n"," | ")[:150]
                     link = c.get_attribute("href")
                     if not link or "/job/" not in link: continue
                     full_link = link if "http" in link else "https://cutshort.io"+link
-                    if not contains_keyword(full_text): continue
-                    if not valid_experience(full_text): continue
+                    # ONLY check if title is not empty - NO keyword filter for Cutshort
+                    if len(title) < 5: continue
+                    # Keep all 0-2 jobs from Cutshort
                     jobs.append({"title": title, "link": full_link, "source": "Cutshort"})
+                    count+=1
                 except: continue
+            print(f"Cutshort KEPT: {count}")
         except Exception as e: print("Cutshort err", e)
 
-        # 2. HIRIST - backend/ai
+        # 2. HIRIST
         try:
             print("Scraping Hirist...")
             page.goto("https://www.hirist.tech/jobs/?search=backend&experience=0-2", timeout=30000)
             page.wait_for_timeout(8000)
-            cards = page.query_selector_all("a[href*='/j/']")
+            # Hirist loads via API - get all links
+            cards = page.query_selector_all("a")
+            h_count=0
+            for c in cards:
+                try:
+                    title = c.inner_text().strip()
+                    link = c.get_attribute("href") or ""
+                    if "/j/" in link and len(title) > 15 and len(title) < 200:
+                        # Light filter only
+                        if any(k in title.lower() for k in ["backend","full","software","developer","engineer","node","python","ai"]):
+                            full_link = link if "http" in link else "https://www.hirist.tech"+link
+                            if full_link not in [j["link"] for j in jobs]:
+                                jobs.append({"title": title[:150], "link": full_link, "source": "Hirist"})
+                                h_count+=1
+                except: continue
+            print(f"Hirist KEPT: {h_count} | Total now: {len(jobs)}")
+        except Exception as e: print("Hirist err", e)
+
+        # 3. WELLFOUND
+        try:
+            print("Scraping Wellfound...")
+            page.goto("https://wellfound.com/role/l/software-engineer", timeout=40000)
+            page.wait_for_timeout(10000)
+            cards = page.query_selector_all("a[href*='/jobs/']")
+            w_count=0
             for c in cards[:40]:
                 try:
                     title = c.inner_text().strip()
                     link = c.get_attribute("href") or ""
-                    if len(title) < 10 or "/j/" not in link: continue
-                    if not contains_keyword(title): continue
-                    full_link = link if "http" in link else "https://www.hirist.tech"+link
-                    jobs.append({"title": title[:120], "link": full_link, "source": "Hirist"})
-                except: continue
-            print(f"After Hirist: {len(jobs)}")
-        except Exception as e: print("Hirist err", e)
-
-        # 3. WELLFOUND - startups + remote
-        try:
-            print("Scraping Wellfound...")
-            page.goto("https://wellfound.com/role/l/software-engineer?experience=0-2", timeout=40000)
-            page.wait_for_timeout(10000)
-            cards = page.query_selector_all("a[href*='/jobs/']")
-            for c in cards[:30]:
-                try:
-                    title = c.inner_text().strip()
-                    link = c.get_attribute("href") or ""
-                    if "/jobs/" not in link or len(title) < 10: continue
-                    if not contains_keyword(title): continue
+                    if "/jobs/" not in link or len(title) < 10 or len(title) > 200: continue
                     full_link = link if "http" in link else "https://wellfound.com"+link
-                    # avoid duplicates
                     if full_link not in [j["link"] for j in jobs]:
-                        jobs.append({"title": title[:120], "link": full_link, "source": "Wellfound"})
+                        jobs.append({"title": title[:150], "link": full_link, "source": "Wellfound"})
+                        w_count+=1
                 except: continue
-            print(f"After Wellfound: {len(jobs)}")
+            print(f"Wellfound KEPT: {w_count} | Total now: {len(jobs)}")
         except Exception as e: print("Wellfound err", e)
 
         browser.close()
